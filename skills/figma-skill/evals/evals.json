@@ -1,0 +1,23 @@
+{
+  "skill_name": "figma-skill",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "从这个 Figma 文件提取设计规范：https://www.figma.com/design/VHrGFBHISrJt8uSnkTjwdc/CRM-Pro-%E2%80%94-Android-App?node-id=0-1 。我需要颜色、字体、间距、圆角、关键组件尺寸，以及这份文件已知的规范缺口。",
+      "expected_output": "先解析 URL 并建会话；对页面节点只列顶层 frame；对代表性 frame/component 查变量和 metadata；对单帧截图核对；输出带来源节点的设计规范，并单列暗色覆盖、交互状态、触控目标和对比度缺口。",
+      "files": []
+    },
+    {
+      "id": 1,
+      "prompt": "我用 Figma MCP 读一个页面：get_variable_defs 传页面节点返回 nothing selected，get_metadata 对整页又超出 token 限制。接下来怎么用最少的调用拿到颜色和组件尺寸？",
+      "expected_output": "指出页面节点不能查变量，改用具体 frame/component；页面级 metadata 只列顶层 frame，再按 frame 读取；结果落盘时用 Python UTF-8 解析；变量补颜色/字体，组件 metadata 补尺寸/圆角；缺失值明确标注而不是猜。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "把 Figma 里这个设置页区块落到 Flutter：https://www.figma.com/design/VHrGFBHISrJt8uSnkTjwdc/CRM-Pro-%E2%80%94-Android-App?node-id=0-1 。项目里已经有 CrmColors、CrmTextStyles 和 CrmDimens，不要直接复制 Figma 的参考代码。",
+      "expected_output": "先加载 figma-design-to-code；选目标区块而非整页；用 get_design_context 拿参考；搜索并复用项目现有组件和 Token；按项目 Token 重写颜色/字体/间距/圆角；补齐状态、触控和暗色；最后运行或截图核对。",
+      "files": []
+    }
+  ]
+}

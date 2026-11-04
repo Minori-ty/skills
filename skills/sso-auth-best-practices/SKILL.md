@@ -11,7 +11,6 @@ description: SSO 认证服务开发与部署。使用此技能处理基于 JWT �
 
 - **认证服务开发**：基于 Gin + JWT 的 SSO 认证服务
 - **安全设计**：RSA 加密传输、bcrypt 密码存储、JWT 令牌管理
-- **用户管理**：用户注册、登录、禁言、封禁、踢下线
 - **令牌管理**：access token、refresh token、令牌刷新、退出登录
 - **部署支持**：Docker 部署、多环境配置、密钥管理
 - **问题解决**：常见 SSO 开发踩坑和解决方案
@@ -62,12 +61,6 @@ docker compose up -d sso
 - `POST /api/auth/logout` - 退出登录
 - `GET /api/auth/validate` - 验证令牌
 
-### 管理端点
-- `GET /api/admin/users` - 用户列表
-- `POST /api/admin/kick` - 踢下线
-- `POST /api/admin/blacklist` - 拉黑用户
-- `POST /api/admin/mute` - 设置禁言
-
 ## 常见问题解决方案
 
 ### 1. Hydration 不匹配 (React #418)
@@ -79,19 +72,7 @@ function formatDate(iso: string): string {
 }
 ```
 
-### 2. CSS 样式丢失
-确保 `App.tsx` 包含 CSS 导入：
-```tsx
-import './index.css'
-```
-
-### 3. 销毁按钮文字不可见
-修复 CSS 变量颜色：
-```css
---destructive-foreground: oklch(0.985 0 0); /* 白色 */
-```
-
-### 4. Redis 错误处理
+### 2. Redis 错误处理
 使用 go-redis 的原生错误：
 ```go
 if err == redis.Nil {  // 正确的错误检查
@@ -109,11 +90,92 @@ docker compose up -d
 docker compose -f SSO/docker-compose.yml up -d
 ```
 
-## 状态模型
+---
 
-- 正常：可登录、可发帖
-- 禁言：可登录、不可发帖  
-- 封禁：不可登录（黑名单）
+## 踩坑记录
+
+### 1. 登出后仍显示在线
+
+**现象**: 用户点击退出后，Admin 用户列表仍显示"Online"。
+
+**根因**: 登录时往 Redis 集合 `sso:user_tokens:<userId>` 中同时存储了 **access JTI 和 refresh JTI 两个值**，但登出只删除了 access JTI，refresh JTI 残留导致 `IsUserOnline` 判断集合非空。
+
+```go
+// ❌ 登录加了 2 个
+h.store.AddUserToken(ctx, userID, accessJTI, ...)    // +1
+h.store.AddUserToken(ctx, userID, refreshJTI, ...)   // +1
+
+// ❌ 登出只删了 1 个
+h.store.RemoveUserToken(ctx, userID, accessJTI)      // -1，集合还有 refresh
+// → IsUserOnline 仍返回 true
+```
+
+**解决**: 登出时直接清空该用户的所有 token 集合，不逐个删除。
+
+```go
+// ✅ 登出: 清除所有 JTI
+if claims, ok := c.Get("user_claims"); ok {
+    if uc, ok := claims.(*model.UserClaims); ok {
+        h.store.RevokeAllUserTokens(c.Request.Context(), uc.UserID)
+    }
+}
+```
+
+底层实现（redis.go）：
+
+```go
+func (s *RedisStore) RevokeAllUserTokens(ctx context.Context, userID string) error {
+    jtiKey := UserTokensPrefix + userID
+    jtis, _ := s.client.SMembers(ctx, jtiKey).Result()
+    pipe := s.client.Pipeline()
+    for _, jti := range jtis {
+        pipe.Set(ctx, TokenBlacklist+":"+jti, "1", 24*time.Hour)
+    }
+    pipe.Del(ctx, jtiKey)     // 删除整个集合
+    _, err := pipe.Exec(ctx)
+    return err
+}
+
+func (s *RedisStore) IsUserOnline(ctx context.Context, userID string) (bool, error) {
+    jtiKey := UserTokensPrefix + userID
+    jtis, _ := s.client.SMembers(ctx, jtiKey).Result()
+    return len(jtis) > 0, nil  // 集合为空 = 离线
+}
+```
+
+### 2. Docker 镜像尽量用 `:alpine`，不锁版本号
+
+**原则**: 所有基础镜像统一使用 `:alpine` 标签，不指定具体版本号。
+
+```dockerfile
+# ✅ 用 :alpine 自动跟随最新
+FROM golang:alpine
+FROM node:alpine
+```
+
+```yaml
+# docker-compose.yml
+image: redis:alpine
+image: postgres:alpine
+image: nginx:alpine
+```
+
+**理由**:
+
+| 原因 | 说明 |
+|:---|---|
+| 安全补丁 | `:alpine` 指向最新的 Alpine 版本，自动包含安全更新 |
+| 体积 | Alpine 基础镜像约 5MB，Debian 约 50MB+ |
+| 常见服务 | Redis、PostgreSQL、Nginx、Node、Go 都提供 `:alpine` 标签 |
+
+**注意 PostgreSQL 18**: 升级到 `postgres:alpine` 后数据目录结构变了，需设置 `PGDATA` 兼容旧数据：
+
+```yaml
+environment:
+  PGDATA: /var/lib/postgresql/data   # 保持旧目录格式
+```
+
+否则会报 `in 18+, these Docker images are configured to store database data in a format which is compatible with "pg_ctlcluster"`。
 
 ---
 
