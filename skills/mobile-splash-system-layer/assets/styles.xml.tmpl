@@ -1,0 +1,16 @@
+<!-- Merge these entries into existing styles; preserve unrelated items.
+     Legacy windowBackground behavior is device/version dependent on Android 12+.
+     Absence of windowSplashScreen attributes does not disable system splash.
+     Configure Activity/Flutter system-bar handoff separately and restore normal
+     business-page system UI. Do not copy window flags without runtime checking. -->
+<resources>
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+    <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <item name="android:windowBackground">@drawable/splash_bg</item>
+    </style>
+</resources>
